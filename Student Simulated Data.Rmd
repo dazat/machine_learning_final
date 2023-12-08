@@ -1,0 +1,1783 @@
+---
+title: "Machine Learning Final"
+author: "Tony Daza"
+date: "2023-12-1"
+output: 
+  pdf_document
+
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Data Source & Overview  
+
+In this final project I am examining student mental health rating data along with student alcohol use. The data includes several predictors ranging from student stress to parent education and income. The data was simulated from kaggle from the following link: https://www.kaggle.com/datasets/rkiattisak/student-performance-in-mathematics
+
+The actual data generator is from this website: http://roycekimmons.com/tools/generated_data/exams
+
+The original data generator had the following variables:
+
+• Gender: The gender of the student (male/female)
+
+• Race/ethnicity: The student's racial or ethnic background (Asian, African-American, Hispanic, etc.)
+
+• Parental level of education: The highest level of education attained by the student's parent(s) or guardian(s)
+
+• Lunch: Whether the student receives free or reduced-price lunch (yes/no)
+
+• Test preparation course: Whether the student completed a test preparation course (yes/no)
+
+• Math score: The student's score on a standardized mathematics test
+
+• Reading score: The student's score on a standardized reading test
+
+• Writing score: The student's score on a standardized writing test
+
+The remaining predictors were simulated and assigned in R:
+
+• Parent Income: The student's family income in dollars, based on US averages (Taking into account parent level of education)
+
+• School location: The student's school's location (Urban, suburban, or rural)
+
+• School type: The student's school's type (Charter or Public)
+
+• Race: The student's race, recoded from the original data for ease of reading
+
+• Lunch: Recoded from the original data to take into account national income cutoff scores and split the data into (free, reduced, and standard) lunch. Using data from: https://www.federalregister.gov/documents/2020/03/20/2020-05982/child-nutrition-programs-income-eligibility-guidelines
+
+• EL status: The student's EL status (EL or Non-EL)
+
+• Home Language: The student's home language
+
+• Grade: The student's grade level (6th - 8th grade)
+
+• Age: The student's age (11-14 years old)
+
+• Number of Close friends: The student's self reported number of close friends (Based on: DeLay D, Ha T, Van Ryzin M, Winter C, Dishion TJ. Changing Friend Selection in Middle School: A Social Network Analysis of a Randomized Intervention Study Designed to Prevent Adolescent Problem Behavior. Prev Sci. 2016 Apr;17(3):285-94. doi: 10.1007/s11121-015-0605-4. PMID: 26377235; PMCID: PMC4791197.)
+
+• Presence of a Trusted adult: The student's self-reported indicator of the presence of a trust adult at school.
+
+Student Mental Health constructs based on a student Health & Wellness Survey and modeled off the findings of the Health and Wellness Survey results from the Lab School in Chicago:
+
+• Mental Health Rating: The student's self-reported mental health rating on a 5 point scale
+
+• Stress Rating: The student's self-reported school stress level on a 10 point scale
+
+• Belonging rating: The student's belonging rating at school on a 7 point scale
+
+• SES Scaled Score: The student's socio-economic status based on parent education, parent income, & FRP lunch status, but scaled to be on a 10 point scale.
+
+Alcohol and Drug use based on: https://www.niaaa.nih.gov/publications/brochures-and-fact-sheets/underage-drinking • Student Alcohol Use: The student's self-report of ever using alcohol
+
+• Marijuana Use: The student's self-report of ever using marijuana
+
+• Number of Siblings: The student's self-reported number of siblings
+
+• Number of Pets: The student's self-reported number of pets
+
+
+Admittedly this is simulated data, but seeing as I could not find a suitable dataset and my projects do not currently have data for me to use, I found a data generator online that has simulated data for student scores.
+
+The sample size is 5000 students from across public and charter schools from varying SES backgrounds and school settings such as suburban, urban, and rural.
+
+## Research Questions   
+
+The purpose of the assignment is to examine potential predictors of student mental health rating 
+
+**Research Questions:**
+
+What factors are the most important for predicting student mental health rating?
+
+Are there any variables that negatively impact student mental health ratings? What about positively impact mental health?
+
+What factors are most important for predicting student use of alcohol?
+
+What factors predict alcohol use positively and negatively?  
+
+##Data Loading  
+
+```{r Loading}
+library(tidyverse)
+library(readr)
+library(data.table)
+exams_1 <- read_csv("~/Desktop/Machine Learning Final/exams (1).csv")
+exams_2 <- read_csv("~/Desktop/Machine Learning Final/exams.csv")
+exams_3 <- read_csv("~/Desktop/Machine Learning Final/exams (2).csv")
+exams_4 <- read_csv("~/Desktop/Machine Learning Final/exams (3).csv")
+exams_5 <- read_csv("~/Desktop/Machine Learning Final/exams (4).csv")
+
+exams_1$id <- seq(1, 1000)
+exams_2$id <- seq(1001,2000)
+exams_3$id <- seq(2001,3000)
+exams_4$id <- seq(3001,4000)
+exams_5$id <- seq(4001,5000)
+
+exams <- rbind(exams_1, exams_2, exams_3, exams_4, exams_5)
+
+```
+
+I have been having trouble further down, so I am going to fix some of the column names. Currently some have an underscore and others use spaces, but I do not like the spaces so I am going to sub in underscores.
+
+```{r}
+names(exams) <- gsub(" ", "_", names(exams))
+
+# Display updated column names
+names(exams)
+
+```
+
+# Data Generation  
+
+Next I added in some hypothetical variables.
+
+## Parent Income  
+
+```{r parent income}
+
+set.seed(121619)
+
+
+# Education levels and associated weights (hypothetical)
+education_weights <- c(
+  "some high school" = 28000,
+  "high school" = 34000,
+  "some college" = 37000,
+  "associate's degree" = 42000,
+  "bachelor's degree" = 58000,
+  "master's degree" = 80000
+)
+
+# Creating a new column 'simulated_income' based on education weights
+exams$parent_income <- education_weights[exams$parental_level_of_education]
+
+# Adding randomness (variation) to the simulated income
+exams$parent_income <- exams$parent_income + rnorm(nrow(exams), mean = 0, sd = 10000)
+
+# Setting a minimum income value of 0
+exams$parent_income <- pmax(exams$parent_income, 0)
+
+
+```
+
+
+## School location  
+
+```{r school location}
+
+set.seed(121691)
+
+weight_urban <- 0.30
+weight_suburban <- 0.57
+weight_rural <- 0.13
+
+# Create a vector representing school types (suburban, urban, rural)
+school_location <- c("Suburban", "Urban", "Rural")
+
+# Generate random school type assignments for each student
+exams$school_location <- sample(school_location, nrow(exams), replace = TRUE, prob = c(weight_urban, weight_suburban, weight_rural))
+
+
+```
+
+
+## School type  
+
+```{r school type}
+
+set.seed(121691)
+
+# Weighted distribution percentages (estimated)
+weight_public <- 0.90
+weight_charter <- 0.1
+
+# Create a vector representing school types (public, private, charter) based on weights
+school_types <- c("Public", "Charter")
+
+# Generate random school type assignments for each student based on weighted probabilities
+exams$school_type <- sample(school_types, nrow(exams), replace = TRUE, prob = c(weight_public, weight_charter))
+
+
+```
+
+## Free & reduced price lunch  
+
+```{r frp lunch}
+
+# Set the cutoff values
+cutoff_free_lunch <- 34000  # Cutoff for free lunch
+cutoff_reduced_lunch <- 49000  # Cutoff for reduced-price lunch
+
+# Create a new column 'lunch_status' with default as 'Standard'
+exams$lunch <- "Standard"
+
+# Assign lunch status based on family income
+exams$lunch[exams$parent_income <= cutoff_free_lunch] <- "Free"
+exams$lunch[exams$parent_income > cutoff_free_lunch & exams$parent_income <= cutoff_reduced_lunch] <- "Reduced"
+
+# Using summary function to get an overview of lunch status distribution
+summary(exams$lunch)
+
+# If you want counts of each lunch status category
+table(exams$lunch)
+
+# If you want proportions/percentages of each lunch status category
+prop.table(table(exams$lunch)) * 100
+
+```
+
+## Checks  
+
+```{r checks}
+
+unique_levels <- unique(exams$parental_level_of_education)
+print(unique_levels)
+
+# Assuming 'exams' is your dataset containing the 'race' column
+unique_levels_race <- unique(exams$`race/ethnicity`)
+print(unique_levels_race)
+
+# Using summary function to get an overview of lunch status distribution
+summary(exams$`race/ethnicity`)
+
+# If you want counts of each lunch status category
+table(exams$`race/ethnicity`)
+
+# If you want proportions/percentages of each lunch status category
+prop.table(table(exams$`race/ethnicity`)) * 100
+
+```
+
+## Race recode  
+
+```{r race}
+
+# Group C = White
+# Group D = Latino
+# Group B = Black
+# Group E = 2 or more
+# Group A = Asian
+
+tag_to_race <- c(
+  "group C" = "White",
+  "group D" = "Latine",
+  "group B" = "Black",
+  "group E" = "2 or more",
+  "group A" = "Asian"
+)
+
+# Create a new column 'race_category' based on the mapping
+exams$race <- tag_to_race[exams$`race/ethnicity`]
+
+exams <- subset(exams, select = -`race/ethnicity`)
+
+```
+
+## Language  
+
+```{r language}
+
+set.seed(121691)
+
+exams$el_status <- NA
+exams$home_language <- NA
+
+# Hypothetical prevalence of languages other than English spoken at home in the US
+non_english_prevalence <- c(
+  "White" = 0.10,    # 10% for White group
+  "Latine" = 0.45,   # 45% for Latine group
+  "Black" = 0.11,    # 20% for Black group
+  "2 or more" = 0.35,# 35% for 2 or more group
+  "Asian" = 0.12     # 10% for Asian group
+)
+
+# Updated hypothetical weights for language other than English based on race categories
+language_weights <- list(
+  "White" = c("English", "Spanish", "French", "Other"),
+  "Latine" = c("Spanish", "English", "Other"),
+  "Black" = c("English", "French", "Other"),
+  "2 or more" = c("English", "Spanish", "Other"),
+  "Asian" = c("Chinese", "English", "Korean", "Other")
+)
+
+# Function to randomly assign language status and home language based on weights for individual students
+assign_language_status <- function(student_id, weights, prevalence) {
+  student_race <- exams$race[exams$id == student_id]  # Get the race for the given student ID
+  el_status <- ifelse(runif(1) <= prevalence[student_race], "EL", "not EL")
+  
+  if (el_status == "EL") {
+    # Selecting a home language if the student is an English Learner
+    non_english_options <- weights[[student_race]]
+    home_language <- if (length(non_english_options) > 0) {
+      sample(non_english_options, 1)
+    } else {
+      "English"  # No non-English options available
+    }
+  } else {
+    # For students not classified as English Learners, assign English as the home language
+    home_language <- "English"
+  }
+  
+  return(list(el_status = el_status, home_language = home_language))
+}
+
+# Generate language status and home language for each student based on their race
+for (student_id in unique(exams$id)) {
+  result <- assign_language_status(student_id, language_weights, non_english_prevalence)
+  exams$el_status[exams$id == student_id] <- result$el_status
+  exams$home_language[exams$id == student_id] <- result$home_language
+}
+
+
+table(exams$el_status)
+table(exams$home_language)
+
+
+```
+
+## Grade level  
+
+```{r grade}
+
+set.seed(121619)  # For reproducibility
+
+# Assuming 'exams' is your dataset and 'id' is the student ID column
+exams$grade <- sample(6:8, nrow(exams), replace = TRUE)
+
+table(exams$grade)
+```
+
+## Age  
+
+```{r age}
+
+set.seed(121619)  # For reproducibility
+
+# Assuming 'exams' is your dataset and 'grade' is the column representing the student's grade
+exams$age <- ifelse(exams$grade == 6, sample(11:12, nrow(exams), replace = TRUE),
+                    ifelse(exams$grade == 7, sample(12:13, nrow(exams), replace = TRUE),
+                           ifelse(exams$grade == 8, sample(13:14, nrow(exams), replace = TRUE), NA)))
+
+table(exams$age)
+```
+
+## Number of Friends  
+
+```{r friends}
+
+set.seed(121691)  # For reproducibility
+
+exams$close_friends <- NA
+
+n <- nrow(exams)  # Number of rows in the dataset
+average_friends <- 3  # Desired average number of close friends
+
+# Generate close_friends column with values between 0 and 7
+exams$close_friends <- pmin(pmax(round(rnorm(n, mean = average_friends, sd = 1)), 0), 7)
+
+# Check summary statistics of the close_friends column
+summary(exams$close_friends)
+
+```
+
+## Presence of a Trusted adults  
+
+```{r trusted adult}
+
+set.seed(121691)  # For reproducibility
+
+n <- nrow(exams)  # Number of rows in the dataset
+exams$trusted_adult <- NA 
+
+# 0.70 is the hypothetical proportion indicating the presence of a trusted adult at school
+exams$trusted_adult <- ifelse(runif(n) <= 0.72, 1, 0)
+
+# Check the distribution of trusted_adult_at_school column
+table(exams$trusted_adult)
+
+```
+
+## Mental Health self-report   
+
+```{r mental health}
+
+set.seed(121619)  # For reproducibility
+
+# Assuming 'exams' is your dataset
+# Generate self-rated mental and emotional health
+exams$mental_health <- sample(c("poor", "fair", "good", "very good", "excellent"), 
+                              nrow(exams), replace = TRUE, 
+                              prob = c(0.05, 0.1, 0.30, 0.40, 0.15))
+
+# Adjust the distribution for mental health rating
+good_verygood_excellent <- c("good", "very good", "excellent")
+exams$mental_health <- ifelse(exams$mental_health %in% good_verygood_excellent,
+                              exams$mental_health,
+                              sample(c("fair", "poor"), sum(!exams$mental_health %in% good_verygood_excellent), replace = TRUE))
+
+# Checking the distribution of self-rated mental and emotional health
+mental_tab <- as.data.frame(table(exams$mental_health))
+mental_tab
+
+```
+
+## Student stress rating   
+
+```{r stress}
+
+set.seed(121619)  # For reproducibility
+
+# Assuming 'exams' is your dataset
+# Create a column for stress rating and initialize with NA values
+exams$stress_rating <- NA
+
+# Define the stress factors and their probabilities for Middle School students
+middle_school_stress_factors <- c("school_work", "grades", "family_expectations")
+
+# Assign stress ratings for Middle School students
+middle_school_students <- exams$grade %in% 6:8  # Assuming grade 6, 7, and 8 are Middle School
+
+# Generate stress ratings based on the stress factors for Middle School students
+exams$stress_rating[middle_school_students] <- sample(c(1:10), sum(middle_school_students), replace = TRUE,
+                                                      prob = c(0.01, 0.02, 0.08, 0.1, 0.27, 0.23, 0.1, 0.11, 0.07, 0.01))  # Adjust probabilities
+
+# Checking the distribution of stress ratings for Middle School students
+summary(exams$stress_rating[middle_school_students])
+
+```
+
+## Belonging Rating  
+
+```{r belonging}
+
+set.seed(121619)  # For reproducibility
+
+# Assuming 'exams' is your dataset
+# Create a column for belonging scale and initialize with NA values
+exams$belonging <- NA
+
+# Assign belonging scale for all students
+exams$belonging <- sample(c("very unwelcome", "mostly unwelcome", "welcome half the time", "mostly welcome", "very welcome"), 
+                                nrow(exams), replace = TRUE, 
+                                prob = c(0.05, 0.05, 0.1, 0.2, 0.6))  # Adjust probabilities
+
+# Adjust belonging scale based on demographic factors
+# Students based on gender identity
+male_students <- exams$gender == "male"
+
+exams$belonging[male_students] <- sample(c("very unwelcome", "mostly unwelcome", "welcome half the time", "mostly welcome", "very welcome"), 
+                                                sum(male_students), replace = TRUE, 
+                                                prob = c(0.05, 0.05, 0.1, 0.2, 0.7))  # Adjust probabilities
+
+# Students based on self-identified race or ethnicity
+white_students <- exams$race == "White"
+
+exams$belonging[white_students] <- sample(c("very unwelcome", "mostly unwelcome", "welcome half the time", 
+                                                  "mostly welcome", "very welcome"), 
+                                                sum(white_students), replace = TRUE, 
+                                                prob = c(0.1, 0.1, 0.2, 0.3, 0.3))  # Adjust probabilities
+
+# Checking the distribution of belonging scale
+table(exams$belonging)
+
+```
+
+## SES Scaled score  
+
+```{r SES}
+set.seed(121619)  # For reproducibility
+
+# Create a column for SES score and initialize with NA values
+exams$ses_score <- NA
+
+# Assign weights to parent education level, parent income, and lunch status
+weight_education <- c("some high school" = 1, "high school" = 3, "some college" = 4, "associate's degree" = 5, "bachelor's degree" = 7, "master's degree" = 8)
+
+
+weight_income <- ifelse(exams$parent_income <= cutoff_free_lunch, 1,
+                        ifelse(exams$parent_income <= cutoff_reduced_lunch, 3, 5))
+
+# Assign SES score for each student
+for (i in 1:nrow(exams)) {
+  education_weight <- weight_education[exams$parental_level_of_education[i]]
+  income_weight <- weight_income[i]
+  lunch_weight <- ifelse(exams$lunch[i] == "free", 1, ifelse(exams$lunch[i] == "reduced", 2, 3))
+  
+  # Calculate SES score based on weighted factors
+  exams$ses_score[i] <- education_weight + income_weight + lunch_weight
+}
+
+# Checking the distribution of SES scores
+summary(exams$ses_score)
+
+# Find the minimum and maximum SES scores
+min_ses <- min(exams$ses_score)
+max_ses <- max(exams$ses_score)
+
+# Perform min-max scaling to rescale SES scores to a range from 1 to 10
+scaled_ses <- ((exams$ses_score - min_ses) / (max_ses - min_ses)) * 9 + 1
+
+scaled_ses <- round(scaled_ses, 2)
+
+# Update the SES scores in the dataset with the scaled values
+exams$ses_score <- scaled_ses
+
+# Check the distribution of rescaled SES scores
+summary(exams$ses_score)
+
+```
+
+## Alcohol Use Self-report  
+
+```{r alcohol use}
+
+set.seed(120623)  # For reproducibility
+
+# Create a column for alcohol use and initialize with 0s (indicating 'No' or 'Not used alcohol')
+exams$alcohol_use <- 0
+
+# Function to randomly assign alcohol use based on age and gender rates
+assign_alcohol_use <- function(age, gender) {
+  if (age >= 14) {
+    if (gender == "male") {
+      return(runif(1) <= 0.20)  # 20% alcohol use rate for male students age 14-15
+    } else {
+      return(runif(1) <= 0.22)  # 22% alcohol use rate for female students age 14-15
+    }
+  } else if (age >= 12) {
+    if (gender == "male") {
+      return(runif(1) <= 0.17)  # 17% alcohol use rate for male students age 12-13
+    } else {
+      return(runif(1) <= 0.18)  # 18% alcohol use rate for female students age 12-13
+    }
+  } else {
+    if (gender == "male") {
+      return(runif(1) <= 0.05)  # 5% alcohol use rate for male students age 11
+    } else {
+      return(runif(1) <= 0.08)  # 8% alcohol use rate for female students age 11
+    }
+  }
+}
+
+
+# Generate alcohol use for each student based on age and gender
+for (i in 1:nrow(exams)) {
+  age_of_student <- exams$age[i]  # Assuming you have an 'age' column in your dataset
+  gender_of_student <- exams$gender[i]  # Assuming you have a 'gender' column
+  
+  # Assign alcohol use based on age and gender rates
+  exams$alcohol_use[i] <- ifelse(assign_alcohol_use(age_of_student, gender_of_student), 1, 0)
+}
+
+# Check the distribution of alcohol_use column
+table(exams$alcohol_use)
+
+```
+
+## Marijuana Use  
+
+```{r marijuana}
+
+set.seed(121619)  # For reproducibility
+
+exams$marijuana_use <- 0
+
+# Function to randomly assign marijuana use based on age rates
+assign_marijuana_use <- function(age) {
+  if (age == 14) {
+    return(runif(1) <= 0.08)  # 8% marijuana use rate for students age 14
+  } else if (age == 12 | age == 13) {
+    return(runif(1) <= 0.025)  # 2.5% marijuana use rate for students age 12-13
+  } else {
+    return(runif(1) <= 0.005)  # No marijuana use for other ages
+  }
+}
+
+# Generate marijuana use for each student based on age
+for (i in 1:nrow(exams)) {
+  age_of_student <- exams$age[i]  # Assuming you have an 'age' column in your dataset
+  
+  # Assign marijuana use based on age rates
+  exams$marijuana_use[i] <- ifelse(assign_marijuana_use(age_of_student), 1, 0)
+}
+
+# Check the distribution of marijuana_use column
+table(exams$marijuana_use)
+
+```
+
+## Number of siblings  
+
+```{r siblings}
+set.seed(121619)  # For reproducibility
+
+
+# Generate number of siblings (0 to 4) randomly assigned with an average of 1
+exams$siblings <- sample(0:4, nrow(exams), replace = TRUE, prob = c(0.2, 0.25, 0.25, 0.2, 0.1))
+
+
+# Check the distribution of number_of_siblings and number_of_pets columns
+summary(exams$siblings)
+
+```
+
+## Number of pets  
+
+```{r pets}
+set.seed(121619)  # For reproducibility
+
+# Create 'number_of_pets' column in the dataset
+exams$pets <- NA
+
+# Generate number of pets (0 to 5) randomly assigned with a normal distribution around an average of 2
+average_pets <- 0  # Average number of pets
+std_dev_pets <- 2  # Standard deviation for number of pets
+
+# Generate pets column with normal distribution
+exams$pets <- round(rnorm(nrow(exams), mean = average_pets, sd = std_dev_pets))
+exams$pets <- pmin(pmax(exams$pets, 0), 5)  # Ensure the values stay within 0 to 5 range
+
+# Check the distribution of number_of_siblings and number_of_pets columns
+summary(exams$pets)
+
+```
+
+## Adjusting score distribution by grade  
+### Math scores  
+We would expect grades to be somewhat different by grade and to add that variability to the data we are going to adjust the distribution of the math, reading, and writing scores by grade level with a minimum of 10 for the scores.
+
+```{r math scores adjusted}
+
+set.seed(121619)  # For reproducibility
+
+# Function to generate math scores for each grade with desired averages and a minimum score of 10
+generate_math_scores <- function(grade, n) {
+  avg_score <- ifelse(grade == 8, 69, ifelse(grade == 7, 64, 56))
+  min_score <- 10
+  max_score <- 100
+  
+  # Generate math scores based on desired average and minimum score
+  scores <- rnorm(n, mean = avg_score, sd = 17)
+  scores <- pmax(pmin(scores, max_score), min_score)  # Ensure no score is below the minimum
+  
+  return(scores)
+}
+
+# Replace math scores by grade level
+exams$math_score <- ifelse(exams$grade == 8,
+                           generate_math_scores(8, sum(exams$grade == 8)),
+                           ifelse(exams$grade == 7,
+                                  generate_math_scores(7, sum(exams$grade == 7)),
+                                  generate_math_scores(6, sum(exams$grade == 6))
+                           )
+)
+
+# Check the updated distribution of math scores by grade
+boxplot(math_score ~ grade, data = exams, 
+        main = "Adjusted Math Scores by Grade", ylab = "Math Score", xlab = "Grade Level")
+
+
+```
+
+### Reading scores  
+
+```{r reading scores adjusted}
+
+boxplot(reading_score ~ grade, data = exams, 
+        main = "Reading Scores by Grade", ylab = "Reading Score", xlab = "Grade Level")
+
+set.seed(121619)  # For reproducibility
+
+# Function to generate reading scores for each grade with desired averages and a minimum score of 10
+generate_reading_scores <- function(grade, n) {
+  avg_score <- ifelse(grade == 8, 67, ifelse(grade == 7, 62, 50))
+  min_score <- 10
+  max_score <- 100
+  
+  # Generate reading scores based on desired average and minimum score
+  scores <- rnorm(n, mean = avg_score, sd = 15)
+  scores <- pmax(pmin(scores, max_score), min_score)  # Ensure no score is below the minimum
+  
+  return(scores)
+}
+
+# Replace reading scores by grade level
+exams$reading_score <- ifelse(exams$grade == 8,
+                           generate_reading_scores(8, sum(exams$grade == 8)),
+                           ifelse(exams$grade == 7,
+                                  generate_reading_scores(7, sum(exams$grade == 7)),
+                                  generate_reading_scores(6, sum(exams$grade == 6))
+                           )
+)
+
+# Check the updated distribution of reading scores by grade
+boxplot(reading_score ~ grade, data = exams, 
+        main = "Adjusted Reading Scores by Grade", ylab = "Reading Score", xlab = "Grade Level")
+```
+### Writing scores  
+
+```{r writing scores adjusted}
+
+boxplot(writing_score ~ grade, data = exams, 
+        main = "Writing Scores by Grade", ylab = "Writing Score", xlab = "Grade Level")
+
+set.seed(121619)  # For reproducibility
+
+# Function to generate writing scores for each grade with desired averages and a minimum score of 10
+generate_writing_scores <- function(grade, n) {
+  avg_score <- ifelse(grade == 8, 55, ifelse(grade == 7, 51, 47))
+  min_score <- 10
+  max_score <- 100
+  
+  # Generate writing scores based on desired average and minimum score
+  scores <- rnorm(n, mean = avg_score, sd = 13)
+  scores <- pmax(pmin(scores, max_score), min_score)  # Ensure no score is below the minimum or maximum
+  
+  return(scores)
+}
+
+# Replace writing scores by grade level
+exams$writing_score <- ifelse(exams$grade == 8,
+                           generate_writing_scores(8, sum(exams$grade == 8)),
+                           ifelse(exams$grade == 7,
+                                  generate_writing_scores(7, sum(exams$grade == 7)),
+                                  generate_writing_scores(6, sum(exams$grade == 6))
+                           )
+)
+
+# Check the updated distribution of writing scores by grade
+boxplot(writing_score ~ grade, data = exams, 
+        main = "Adjusted Writing Scores by Grade", ylab = "Writing Score", xlab = "Grade Level")
+```
+
+## Renaming gender column  
+```{r rename}
+exams <- exams %>%
+  rename(sex = gender)
+
+```
+
+## Save the final dataset  
+
+```{r saved}
+
+write.csv(exams, "final_exams.csv", row.names = FALSE)
+
+```
+
+
+# Mental Health Data  
+## Research Questions  
+*Categorical ordinal variable: mental health*  
+What factors are the most important for predicting student mental health rating?
+
+Are there any variables that negatively impact student mental health ratings? What about positively impact mental health?
+
+
+## Data processing:  
+### Factoring and Reordering  
+
+```{r reorder}
+require(recipes)
+
+# Check levels of the 'mental_health' column
+levels(as.factor(exams$mental_health))
+
+# Define the order of the levels
+new_order <- rev(c("excellent", "very good", "good", "fair", "poor")) 
+
+# Reorder the levels of the 'mental_health' factor variable
+exams$mental_health <- factor(exams$mental_health, levels = new_order)
+
+# Check the updated levels
+levels(exams$mental_health)
+
+########################################
+
+# Parent level of education
+levels(as.factor(exams$parental_level_of_education))
+
+new_order <- c("some high school", "high school", "associate's degree", "some college",
+                   "bachelor's degree", "master's degree")
+
+exams$parental_level_of_education <- factor(exams$parental_level_of_education, levels = new_order)
+
+levels(exams$parental_level_of_education)
+
+#########################################
+
+
+levels(as.factor(exams$belonging))
+
+new_order <- c("very unwelcome", "mostly unwelcome", "welcome half the time",
+               "mostly welcome", "very welcome")
+
+exams$belonging <- factor(exams$belonging, levels = new_order)
+
+levels(exams$belonging)
+
+```
+
+Here is the distribution of the outcome variable of mental health rating
+```{r}
+
+summary(exams$mental_health)
+
+# General boxplot for Mental Health Ratings
+boxplot(exams$mental_health, main = "Mental Health (All Grades)", ylab = "Mental Health Rating")
+
+# Boxplot for Mental Health ratings by grade
+boxplot(mental_health ~ grade, data = exams, 
+        main = "Mental Health Rating by Grade", ylab = "Mental Health Rating", xlab = "Grade Level")
+
+```
+
+### Model Variables  
+
+```{r}
+outcome <- 'mental_health'
+id <- 'id'
+
+categorical <- c('sex', 'lunch', 'test_preparation_course',
+                 'school_location', 'school_type', 'race', 'el_status',
+                 'home_language', 'grade', 'trusted_adult', 'alcohol_use', 'marijuana_use', 
+                'parental_level_of_education', 'belonging')
+
+numeric <- c('math_score', 'reading_score', 'writing_score', 'parent_income', 'age', 'stress_rating', 'ses_score', 'pets', 'close_friends', 'siblings')
+
+```
+
+
+```{r}
+
+exams <- exams %>%
+  mutate(across(c('sex', 'lunch', 'test_preparation_course',
+                 'school_location', 'school_type', 'race', 'el_status',
+                 'home_language', 'grade', 'trusted_adult', 'alcohol_use', 'marijuana_use'), as.factor))
+
+# Check complete
+# str(exams)
+```
+
+### Preparing the data  
+Time for the recipe
+```{r recipe}
+
+all_exam_pred <- c(categorical, numeric)
+
+
+blueprint_exams <- recipe(x = exams) %>%
+  update_role(id, new_role = "id") %>%
+  update_role(outcome, new_role = "outcome") %>%
+  update_role(all_exam_pred, new_role = "predictor") %>%
+  step_indicate_na(all_of(categorical),all_of(numeric)) %>%
+  step_zv(all_numeric()) %>%
+  step_impute_mean(all_of(numeric)) %>%
+  step_impute_mode(all_of(categorical)) %>%
+  step_poly(all_of(numeric),degree=2) %>%
+  step_normalize(paste0(numeric,'_poly_1'),
+                 paste0(numeric,'_poly_2')) %>%
+  step_dummy(all_of(categorical),one_hot=TRUE) 
+
+# Summary of the blueprint
+summary(blueprint_exams)
+
+```
+
+### Split data for testing  
+
+```{r spliting mental}
+
+set.seed(121619)
+  
+loc      <- sample(1:nrow(exams), round(nrow(exams) * 0.9))
+exams_train  <- exams[loc, ]
+exams_test  <- exams[-loc, ]
+
+dim(exams_train)
+
+dim(exams_test)
+
+```
+
+### Cross Folding  
+```{r cross folding}
+#install.packages("caret")
+require(caret)
+
+exams_train = exams_train[sample(nrow(exams_train)),]
+
+# Create 10 folds with equal size
+
+    folds = cut(seq(1,nrow(exams_train)),breaks=10,labels=FALSE)
+  
+# Create the list for each fold 
+      
+    my.indices <- vector('list',10)
+
+    for(i in 1:10){
+        my.indices[[i]] <- which(folds!=i)
+    }
+```
+
+### Prepared Data  
+
+```{r prepping}
+prepare_exams <- prep(blueprint_exams, 
+                training = exams_train)
+prepare_exams
+
+
+```
+
+### Baking data  
+
+```{r baking}
+baked_train <- bake(prepare_exams, new_data = exams_train)
+
+baked_test <- bake(prepare_exams, new_data = exams_test)
+
+dim(baked_train)
+
+dim(baked_test)
+
+
+```
+
+## Data Analysis  
+### Polynomial Logit Modeling  
+Finally done preparing the data
+
+Tried to use a linear model without realizing that it is an ordinal categorical variable. Instead I am using logit modeling while taking into account the ordinal categorical nature of the outcome variable.
+
+I attempted to use a ordinal model with caret to use cross validation but I struggled to get the model to converge. Instead I am going to use the polr function, though the results will likely not be as accurate.
+
+```{r lm}
+library(MASS)
+library(DT)
+#install.packages("ordinalNet")
+#require(ordinalNet)
+
+pol_mod <- polr(mental_health ~ ., data = exams_train)
+
+### I wanted to use the caret model but I am not having much success.
+# pol_log <- caret::train(
+#   mental_health ~ .,
+#   data = exams_train,
+#   method = "polr",
+#   trControl = cv)
+
+### Then I tried to use a penalized ordinal model but I could not get the model to converge.
+# grid <- expand.grid(
+#   alpha = seq(0, 1, by = 0.1),
+#   lambda = seq(0,1, by = 0.1),
+#   criteria = c("AUC"),  
+#   link = c("probit"),
+#   modeltype = "ordinalNet",
+#   family = "acat")
+# 
+# pol_mod <- caret::train(
+#   mental_health ~ ., 
+#   data = exams_train, 
+#   method = "ordinalNet",
+#   tuneGrid = grid,
+#   trControl = cv,
+#   parallelTerms = T)
+
+#pol_mod$coefficients
+
+
+# Here is a look at the coefficients
+options(scipen=99)
+coefficients <- coef(pol_mod)
+zero_coef_vars <- names(coefficients[coefficients == 0])
+cat(length(zero_coef_vars), "predictors had a value of zero for the coefficient with non-penalty regression")
+
+# Here we can see the ordered coefficients 
+coef_names <- names(coefficients)
+coef_df <- data.frame(variable = coef_names, coefficient = coefficients)
+sorted_coefs <- coef_df[order(coef_df$coefficient, decreasing = TRUE), ]
+DT::datatable(sorted_coefs, rownames = FALSE)
+
+# Cutoffs for Mental health
+print(pol_mod$zeta)
+
+#While not quite the same as in a binary model, here is manually calculated accuracy.
+
+predicted_values <- predict(pol_mod, exams_test, type = "class")
+
+# Calculate accuracy by comparing predicted vs. actual categories
+accuracy <- mean(predicted_values == exams_test$mental_health)
+cat("The Polr model accuracy is:", accuracy, "\n")
+
+
+
+print(pol_mod)
+```
+
+### Tree Modeling  
+
+```{r}
+#install.packages("rpart")
+require(rpart)
+
+grid <- data.frame(cp=seq(0,0.05,.001))
+
+# Specify the trainControl for cross-validation
+cv <- trainControl(method = "cv", number = 10) 
+
+# Train the model
+mod <- caret::train(blueprint_exams, 
+             data = exams_train, 
+             method = "rpart",
+             tuneGrid = grid,
+             trControl = cv,
+             control = list(minsplit = 10,
+                            minbucket = 2,
+                            maxdepth = 20))
+
+
+# Get predictions
+predictions <- predict(mod, newdata = exams_test)
+
+# Evaluate the model
+results <- confusionMatrix(predictions, exams_test$mental_health)
+print(results)
+
+
+```
+Accuracy peaks at 0.8055619 with a cp of 0.025
+
+```{r rpart plot}
+
+mod$results
+mod$bestTune # 0.025
+
+
+plot(mod)
+```
+
+### Tree Plot  
+
+```{r tree plot2}
+#install.packages("rattle")
+require(rattle)
+fancyRpartPlot(mod$finalModel,type=2,sub='')
+
+
+```
+
+
+```{r tree var}
+# install.packages("vip")
+require(vip)
+
+vip(mod, 
+    num_features = 10, 
+    geom = "point") + 
+  theme_bw()
+
+```
+
+
+# Alcohol Use Data  
+## Research Questions  
+*Binary variable: Alcohol Use*  
+What factors are most important for predicting student use of alcohol?
+
+What factors predict alcohol use positively and negatively?  
+
+## Data Preparation:  
+### Data Descriptives:  
+
+First here is the distribution of the outcome variable of Alcohol use
+```{r}
+exams <- exams %>%
+  mutate(across(c('sex', 'lunch', 'test_preparation_course',
+                 'school_location', 'school_type', 'race', 'el_status',
+                 'home_language', 'grade', 'trusted_adult', 'alcohol_use', 'marijuana_use'), as.factor))
+
+
+summary(exams$alcohol_use)
+
+al_tab_gr <- as.data.table(table(exams$alcohol_use, exams$grade))
+al_tab_gr
+
+
+al_tab_gr %>%
+ggplot(aes(x = V1, y = N, fill = V2)) +
+  geom_col(position = "dodge") +
+  labs(title = "Distribution of Alcohol Use By Grade",
+       x = "",
+       y = "Number") +
+  scale_fill_discrete(name = "Alcohol Use") +
+  theme_minimal() +  
+  theme(panel.grid.major = element_blank(),  
+        panel.grid.minor = element_blank(),  
+        panel.background = element_blank())
+
+```
+
+Luckily not many students reported using alcohol, but I am still curious if we can predict who used alcohol.
+
+### Model Variables  
+
+```{r}
+
+exams <- exams %>%
+  mutate(alcohol_use = recode_factor(alcohol_use,
+      '0' = 'never used',
+      '1' = 'used'))
+
+exams <- exams %>%
+  mutate(marijuana_use = recode_factor(marijuana_use,
+      '0' = 'never used',
+      '1' = 'used'))
+
+outcome <- 'alcohol_use'
+id <- 'id'
+
+categorical <- c('sex', 'lunch', 'test_preparation_course',
+                 'school_location', 'school_type', 'race', 'el_status',
+                 'home_language', 'grade', 'trusted_adult', 'marijuana_use', 'parental_level_of_education', 'belonging', 'mental_health')
+
+numeric <- c('math_score', 'reading_score', 'writing_score', 'parent_income', 'age', 'stress_rating', 'ses_score', 'pets', 'close_friends', 'siblings')
+
+```
+
+```{r}
+# Check complete
+#str(exams)
+```
+
+### Preparing the data  
+Time for the recipe
+```{r alcohol recipe}
+
+all_exam_pred <- c(categorical, numeric)
+
+
+blueprint_exams <- recipe(x = exams) %>%
+  update_role(id, new_role = "id") %>%
+  update_role(outcome, new_role = "outcome") %>%
+  update_role(all_exam_pred, new_role = "predictor") %>%
+  step_indicate_na(all_of(categorical),all_of(numeric)) %>%
+  step_zv(all_numeric()) %>%
+  step_impute_mean(all_of(numeric)) %>%
+  step_impute_mode(all_of(categorical)) %>%
+  step_poly(all_of(numeric),degree=2) %>%
+  step_normalize(paste0(numeric,'_poly_1'),
+                 paste0(numeric,'_poly_2')) %>%
+  step_dummy(all_of(categorical),one_hot=TRUE)
+
+# Summary of the blueprint
+summary(blueprint_exams)
+
+```
+
+### Split data for testing  
+
+```{r spliting al}
+
+set.seed(121619)
+  
+loc      <- sample(1:nrow(exams), round(nrow(exams) * 0.9))
+exams_train  <- exams[loc, ]
+exams_test  <- exams[-loc, ]
+
+dim(exams_train)
+
+dim(exams_test)
+
+```
+It might make more sense to try this with cross folding.
+
+```{r crossing}
+
+exams_train = exams_train[sample(nrow(exams_train)),]
+
+# Create 10 folds with equal size
+
+    folds = cut(seq(1,nrow(exams_train)),breaks=10,labels=FALSE)
+  
+# Create the list for each fold 
+      
+    my.indices <- vector('list',10)
+
+    for(i in 1:10){
+        my.indices[[i]] <- which(folds!=i)
+    }
+```
+
+
+```{r al prep}
+prepare <- prep(blueprint_exams, 
+                training = exams_train)
+prepare
+
+```
+
+## Data Analysis Alcohol    
+### Logit Modeling  
+There were a lot of warnings, I think I will have to examine the data using a penalty term.  
+
+```{r alcohol mod}
+
+cv <- trainControl(method = "repeatedcv", number = 10, repeats = 3)
+
+mod_log <- caret::train(
+  alcohol_use ~ ., 
+  data = exams_train, 
+  method = "glm",
+  trControl = cv,
+  family = binomial(link = "logit"),
+  metric = "Accuracy")
+
+print(mod_log)
+
+```
+
+```{r predict al}
+predicted_test <- predict(mod_log, exams_test, type='prob')
+
+dim(predicted_test)
+```
+
+### Evaluation of Logit Model Alcohol Non-Penalized  
+
+```{r eval al}
+require(cutpointr)
+
+cut.obj <- cutpointr(x     = predicted_test$used,
+                     class = exams_test$alcohol_use)
+
+cat(auc(cut.obj), "AUC")
+cat("\n")
+
+pred_class <- ifelse(predicted_test$used>.25,1,0)
+
+confusion <- table(exams_test$alcohol_use,pred_class)
+
+confusion
+
+cat("Evaluation Metrics - Non-Penalized Logistic Regression Model")
+cat("\n")
+
+# True Negative Rate
+TNR <- confusion[1,1]/(confusion[1,1]+confusion[1,2])
+cat(TNR, "True Negative Rate")
+cat("\n")
+
+# False Positive Rate
+FPR <- confusion[1,2]/(confusion[1,1]+confusion[1,2])
+cat(FPR, "False Positive Rate")
+cat("\n")
+
+# True Positive Rate
+TPR <- confusion[2,2]/(confusion[2,1]+confusion[2,2])
+cat(TPR, "True Positive Rate")
+cat("\n")
+
+# Precision
+PRE <- confusion[2,2]/(confusion[1,2]+confusion[2,2])
+cat(PRE, "Precision")
+cat("\n")
+
+# Accuracy
+ACC <- (confusion[1,1] + confusion[2,2])/(confusion[1,1]+confusion[1,2]+confusion[2,1]+confusion[2,2])
+cat(ACC, "Accuracy")
+cat("\n")
+
+```
+
+
+## Logit Ridge Model  
+
+```{r ridge al}
+grid_ridge <- data.frame(alpha = 0, lambda = seq(0.001,.2,.001)) 
+
+ridge_mod <- caret::train(blueprint_exams, 
+                          data      = exams_train, 
+                          method    = "glmnet",
+                          tuneGrid  = grid_ridge,
+                          trControl = cv)
+
+plot(ridge_mod)
+
+```
+
+### Ridge Regression Evaluation  
+
+```{r ridge eval al}
+best_lambda <- ridge_mod$bestTune$lambda
+best_lambda
+
+ridge_mod$results[200,]
+
+```
+
+```{r}
+
+predicted_test <- predict(ridge_mod, exams_test, type='prob')
+
+summary(predicted_test$used)
+
+cut.obj_ridge <- cutpointr(x   = predicted_test$used,
+                     class = exams_test$alcohol_use)
+
+cat(auc(cut.obj_ridge), "AUC")
+cat("\n")
+
+
+pred_class <- ifelse(predicted_test$used>.25,1,0)
+
+confusion <- table(exams_test$alcohol_use,pred_class)
+
+confusion
+
+cat("Evaluation Metrics - Ridge Penalty Model")
+cat("\n")
+
+# True Negative Rate
+TNR <- confusion[1,1]/(confusion[1,1]+confusion[1,2])
+cat(TNR, "True Negative Rate")
+cat("\n")
+
+# False Positive Rate
+FPR <- confusion[1,2]/(confusion[1,1]+confusion[1,2])
+cat(FPR, "False Positive Rate")
+cat("\n")
+
+# True Positive Rate
+TPR <- confusion[2,2]/(confusion[2,1]+confusion[2,2])
+cat(TPR, "True Positive Rate")
+cat("\n")
+
+# Precision
+PRE <- confusion[2,2]/(confusion[1,2]+confusion[2,2])
+cat(PRE, "Precision")
+cat("\n")
+
+# Accuracy
+ACC <- (confusion[1,1] + confusion[2,2])/(confusion[1,1]+confusion[1,2]+confusion[2,1]+confusion[2,2])
+cat(ACC, "Accuracy")
+cat("\n")
+
+```
+
+## Logit Lasso Model  
+
+```{r lasso mod}
+grid_lasso <- data.frame(alpha = 1, lambda = seq(0.001,0.1,.001)) 
+
+lasso_mod <- caret::train(blueprint_exams, 
+                          data      = exams_train, 
+                          method    = "glmnet",
+                          tuneGrid  = grid_lasso,
+                          trControl = cv)
+
+plot(lasso_mod)
+
+```
+
+```{r lasso}
+lasso_mod$bestTune$lambda
+lasso_mod$results[100,]
+
+predicted_test <- predict(lasso_mod, exams_test, type='prob')
+summary(predicted_test$used)
+
+cut.obj_lasso <- cutpointr(x  = predicted_test$used,
+                     class = exams_test$alcohol_use)
+
+cat(auc(cut.obj_lasso), "AUC")
+cat("\n")
+
+
+pred_class <- ifelse(predicted_test$used>.25,1,0)
+
+summary(predicted_test$used)
+
+# 
+# cat("Evaluation Metrics - Lasso Penalty Model")
+# cat("\n")
+# 
+# # True Negative Rate
+# TNR <- confusion[1,1]/(confusion[1,1]+confusion[1,2])
+# cat(TNR, "True Negative Rate")
+# cat("\n")
+# 
+# # False Positive Rate
+# FPR <- confusion[1,2]/(confusion[1,1]+confusion[1,2])
+# cat(FPR, "False Positive Rate")
+# cat("\n")
+# 
+# # True Positive Rate
+# TPR <- confusion[2,2]/(confusion[2,1]+confusion[2,2])
+# cat(TPR, "True Positive Rate")
+# cat("\n")
+# 
+# # Precision
+# PRE <- confusion[2,2]/(confusion[1,2]+confusion[2,2])
+# cat(PRE, "Precision")
+# cat("\n")
+# 
+# # Accuracy
+# ACC <- (confusion[1,1] + confusion[2,2])/(confusion[1,1]+confusion[1,2]+confusion[2,1]+confusion[2,2])
+# cat(ACC, "Accuracy")
+# cat("\n")
+
+```
+
+For some reason the Lasso and Ridge Regression Models seem to be performing worse than the non-penalized model. 
+
+### Alcohol Variable Coefficients  
+
+Coefficients for the ridge model.  
+```{r}
+
+options(scipen=99)
+coefs <- coef(ridge_mod$finalModel,ridge_mod$bestTune$lambda)
+coefs.zero <- coefs[which(coefs[,1]==0),]
+cat(length(coefs.zero), "predictors had a value of zero for the coefficient with Ridge penalty regression")
+
+ind   <- order(coefs,decreasing=T)
+DT::datatable(as.matrix(coefs[ind[-1],]))
+
+```
+
+Coefficients for the non-penalized model.  
+```{r}
+coefficients <- coef(mod_log$finalModel)
+coef_names <- names(coefficients)
+coef_df <- data.frame(variable = coef_names, coefficient = coefficients)
+sorted_coefs <- coef_df[order(coef_df$coefficient, decreasing = TRUE), ]
+DT::datatable(sorted_coefs, rownames = FALSE)
+
+```
+
+### Examining Variables of importance  
+Importance of variables based on ridge model.  
+```{r}
+vip(ridge_mod, 
+    num_features = 10, 
+    geom = "point") + 
+  theme_bw()
+```
+
+
+Importance of variables based on non-penalized model.
+```{r}
+vip(mod_log, 
+    num_features = 10, 
+    geom = "point") + 
+  theme_bw()
+```
+
+
+## Tree Modeling  
+
+
+The tree model does not predict the alcohol use well. It predicts no students use alcohol. I tried using a bagged tree model but was running into errors after it initially ran. 
+
+```{r, eval=FALSE}
+
+# exams <- exams %>%
+#   mutate(alcohol_use = recode_factor(alcohol_use,
+#       'never used' = '0',
+#       'used' = '1'))
+# 
+# exams <- exams %>%
+#   mutate(marijuana_use = recode_factor(marijuana_use,
+#       'never used' = '0',
+#       'used' = '1'))
+# 
+# all_exam_pred <- c(categorical, numeric)
+# 
+# 
+# blueprint_exams <- recipe(x = exams) %>%
+#   update_role(id, new_role = "id") %>%
+#   update_role(outcome, new_role = "outcome") %>%
+#   update_role(all_exam_pred, new_role = "predictor") %>%
+#   step_indicate_na(all_of(categorical),all_of(numeric)) %>%
+#   step_zv(all_numeric()) %>%
+#   step_impute_mean(all_of(numeric)) %>%
+#   step_impute_mode(all_of(categorical)) %>%
+#   step_poly(all_of(numeric),degree=2) %>%
+#   step_normalize(paste0(numeric,'_poly_1'),
+#                  paste0(numeric,'_poly_2')) %>%
+#   step_dummy(all_of(categorical),one_hot=TRUE)
+# 
+# set.seed(121619)
+#   
+# loc      <- sample(1:nrow(exams), round(nrow(exams) * 0.9))
+# exams_train  <- exams[loc, ]
+# exams_test  <- exams[-loc, ]
+# 
+# exams_train = exams_train[sample(nrow(exams_train)),]
+#   
+#   # Create 10 folds with equal size
+#   
+#     folds = cut(seq(1,nrow(exams_train)),breaks=10,labels=FALSE)
+#   
+#   # Create the list for each fold 
+#   
+#     my.indices <- vector('list',10)
+#     for(i in 1:10){
+#       my.indices[[i]] <- which(folds!=i)
+#     }
+#     
+# prepare <- prep(blueprint_exams, 
+#                 training = exams_train)
+# prepare
+# 
+# cv <- trainControl(method = "cv",
+#                      index  = my.indices,
+#                      classProbs = TRUE,
+#                      summaryFunction = mnLogLoss)
+
+```
+
+
+```{r}
+#install.packages("ranger")
+#require(ranger)
+
+# grid <- expand.grid(mtry = 24,splitrule='gini',min.node.size=2)
+
+
+grid <- data.frame(cp=seq(0,5,.01))
+
+cv <- trainControl(method = "cv", number = 10)
+
+# Train the model
+tree_mod <- caret::train(blueprint_exams,
+             data = exams_train,
+             method = "rpart",
+             tuneGrid = grid,
+             trControl = cv,
+             control = list(minsplit = 1,
+                            minbucket = 2,
+                            maxdepth = 10))
+
+
+# Get predictions
+pred <- predict(tree_mod, newdata = exams_test)
+table(pred)
+# Evaluate the model
+results <- confusionMatrix(pred, exams_test$alcohol_use)
+print(results)
+
+#print(data.frame(Predicted = predictions, Actual = exams_test$alcohol_use))
+
+```
+
+
+
+```{r}
+
+# vip(tree_mod, 
+#     num_features = 10, 
+#     geom = "point") + 
+#   theme_bw()
+
+```
+
+## Graphs
+
+### Mental Health  
+```{r}
+mental_tab <- as.data.frame(table(exams$mental_health))
+
+mental_tab %>%
+ggplot(aes(x = Var1, y = Freq, fill = Var1)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Distribution of Mental Health Ratings",
+       x = "",
+       y = "Frequency") +
+  scale_fill_discrete(name = "Mental Health Rating") +
+  theme_minimal() +  
+  theme(panel.grid.major = element_blank(),  
+        panel.grid.minor = element_blank(),  
+        panel.background = element_blank())
+```
+
+### Mental Health x Alcohol    
+```{r}
+############################################################
+# Mental Health Data
+############################################################
+
+alcohol_mental_table <- as.data.frame(table(exams$alcohol_use, exams$mental_health))
+alcohol_mental_table
+
+proportions <- prop.table(table(exams$alcohol_use, exams$mental_health), margin = 2)
+alcohol_mental_table_proportions <- as.data.frame(proportions)
+colnames(alcohol_mental_table_proportions) <- c("Alcohol_Use", "Mental Health", "Proportion")
+alcohol_mental_table_proportions
+
+alcohol_mental_table %>%
+ggplot(aes(x = Var1, y = Freq, fill = Var2)) +
+  geom_col(position = "dodge") +
+  labs(title = "Distribution of Mental Health Ratings by Alcohol Use",
+       x = "",
+       y = "Frequency") +
+  scale_fill_discrete(name = "Mental Health Rating") +
+  theme_minimal() +  
+  theme(panel.grid.major = element_blank(),  
+        panel.grid.minor = element_blank(),  
+        panel.background = element_blank())
+
+alcohol_mental_table_proportions %>%
+ggplot(aes(x = `Mental Health`, y = Proportion, fill = Alcohol_Use)) +
+  geom_col(position = "dodge") +
+  labs(title = "Proportion of Alcohol Use by Mental Health Rating",
+       x = "Mental Health Rating",
+       y = "Proportion") +
+  scale_fill_discrete(name = "Alcohol Use") +
+  theme_minimal() +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(),
+        axis.text.x = element_text(angle = 45, hjust = 1)) +
+  geom_text(aes(label = scales::percent(Proportion)), 
+            position = position_dodge(width = 0.9), 
+            vjust = 0.25)
+
+```
+
+### Marijuana Graph x Alcohol   
+```{r}
+##################################################################
+# Marijuana Data
+#################################################################
+
+alcohol_mari_table <- as.data.frame(table(exams$alcohol_use, exams$marijuana_use))
+alcohol_mari_table
+
+proportions <- prop.table(table(exams$alcohol_use, exams$marijuana_use), margin = 2)
+alcohol_mari_table_proportions <- as.data.frame(proportions)
+colnames(alcohol_mari_table_proportions) <- c("Alcohol_Use", "Marijuana_Use", "Proportion")
+alcohol_mari_table_proportions
+
+alcohol_mari_table %>%
+ggplot(aes(x = Var1, y = Freq, fill = Var2)) +
+  geom_col(position = "dodge") +
+  labs(title = "Distribution of Marijuana Use by Alcohol Use",
+       x = "",
+       y = "Frequency") +
+  scale_fill_discrete(name = "Marijuana Use") +
+  theme_minimal() +  
+  theme(panel.grid.major = element_blank(),  
+        panel.grid.minor = element_blank(),  
+        panel.background = element_blank())
+
+alcohol_mari_table_proportions %>%
+ggplot(aes(x = Marijuana_Use, y = Proportion, fill = Alcohol_Use)) +
+  geom_col(position = "dodge") +
+  labs(title = "Proportion of Alcohol Use by Marijuana Use",
+       x = "Marijuana Use",
+       y = "Proportion") +
+  scale_fill_discrete(name = "Alcohol Use") +
+  theme_minimal() +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(),
+        axis.text.x = element_text(angle = 45, hjust = 1)) +
+  geom_text(aes(label = scales::percent(Proportion)), 
+            position = position_dodge(width = 0.9), 
+            vjust = 0.25)
+
+```
+
+
+### Home language x Alcohol  
+```{r}
+######################################################################
+# Home Language Data
+######################################################################
+alcohol_lang_table <- as.data.frame(table(exams$alcohol_use, exams$home_language))
+alcohol_lang_table
+
+proportions <- prop.table(table(exams$alcohol_use, exams$home_language), margin = 2)
+alcohol_lang_table_proportions <- as.data.frame(proportions)
+colnames(alcohol_lang_table_proportions) <- c("Alcohol_Use", "Home_Language", "Proportion")
+alcohol_lang_table_proportions
+
+alcohol_lang_table %>%
+ggplot(aes(x = Var2, y = Freq, fill = Var1)) +
+  geom_col(position = "dodge") +
+  labs(title = "Distribution of Alcohol Use by Home Language",
+       x = "",
+       y = "Frequency") +
+  scale_fill_discrete(name = "Alcohol Use") +
+  theme_minimal() +  
+  theme(panel.grid.major = element_blank(),  
+        panel.grid.minor = element_blank(),  
+        panel.background = element_blank())
+
+
+alcohol_lang_table_proportions %>%
+ggplot(aes(x = Home_Language, y = Proportion, fill = Alcohol_Use)) +
+  geom_col(position = "dodge") +
+  labs(title = "Proportion of Alcohol Use by Home Language",
+       x = "Home Language",
+       y = "Proportion") +
+  scale_fill_discrete(name = "Alcohol Use") +
+  theme_minimal() +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(),
+        axis.text.x = element_text(angle = 45, hjust = 1)) +
+  geom_text(aes(label = scales::percent(Proportion)), 
+            position = position_dodge(width = 0.9), 
+            vjust = 0.25)
+
+```
+
+
+### Belonging x Alcohol  
+```{r}
+######################################################################
+# Belonging Data
+######################################################################
+alcohol_belong_table <- as.data.frame(table(exams$alcohol_use, exams$belonging))
+alcohol_belong_table
+
+proportions <- prop.table(table(exams$alcohol_use, exams$belonging), margin = 2)
+alcohol_belong_table_proportions <- as.data.frame(proportions)
+colnames(alcohol_belong_table_proportions) <- c("Alcohol_Use", "Belonging", "Proportion")
+alcohol_belong_table_proportions
+
+alcohol_belong_table %>%
+ggplot(aes(x = Var2, y = Freq, fill = Var1)) +
+  geom_col(position = "dodge") +
+  labs(title = "Distribution of Alcohol Use by Belonging Score",
+       x = "",
+       y = "Frequency") +
+  scale_fill_discrete(name = "Alcohol Use") +
+  theme_minimal() +  
+  theme(panel.grid.major = element_blank(),  
+        panel.grid.minor = element_blank(),  
+        panel.background = element_blank(),
+        axis.text.x = element_text(angle = 60, hjust = 1))
+
+alcohol_belong_table_proportions %>%
+ggplot(aes(x = Belonging, y = Proportion, fill = Alcohol_Use)) +
+  geom_col(position = "dodge") +
+  labs(title = "Proportion of Alcohol Use by Belonging Group",
+       x = "Belonging Group",
+       y = "Proportion") +
+  scale_fill_discrete(name = "Alcohol Use") +
+  theme_minimal() +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(),
+        axis.text.x = element_text(angle = 45, hjust = 1)) +
+  geom_text(aes(label = scales::percent(Proportion)), 
+            position = position_dodge(width = 0.9), 
+            vjust = 0.25)
+```
+
+
